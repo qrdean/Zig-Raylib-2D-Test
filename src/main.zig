@@ -1,14 +1,11 @@
-const rl = @import("raylib");
-const another = @import("another.zig");
 const std = @import("std");
-// const prng = std.Random.DefaultPrng;
-// var prng = std.Random.DefaultPrng.init({
-//     var seed: u64 = undefined;
-//     std.posix.getrandom(std.mem.asBytes(&seed));
-// });
-// const rand = prng.random();
-// const rand: Random = undefined;
 
+const rl = @import("raylib");
+
+const another = @import("another.zig");
+
+const screenHeight = 450;
+const screenWidth = 800;
 const Game = struct {
     projectiles: [100]LaserProjectile,
     projectilesidx: usize,
@@ -42,18 +39,52 @@ const Game = struct {
         }
     }
 };
-const screenWidth = 800;
-const screenHeight = 450;
-var game: Game = Game.init();
+
+const GameData = struct {
+    Assets: Assets,
+    score: i32,
+
+    pub fn init() anyerror!GameData {
+        return GameData{
+            .Assets = try Assets.init(),
+            .score = 0,
+        };
+    }
+};
+
+const Assets = struct {
+    RockTexture: rl.Texture,
+    LaserTexture: rl.Texture,
+    PlayerTexture: rl.Texture,
+
+    pub fn init() anyerror!Assets {
+        return Assets{
+            .RockTexture = try rl.loadTexture("assets/meteor.png"),
+            .LaserTexture = try rl.loadTexture("assets/laser.png"),
+            .PlayerTexture = try rl.loadTexture("assets/spaceship.png"),
+        };
+    }
+};
+
+var game: Game = undefined;
+var gameData: GameData = undefined;
 
 const Player = struct {
     pos: rl.Vector2,
     direction: rl.Vector2,
     speed: f32,
     radius: f32,
+    texture: rl.Texture,
 
     pub fn init(pos: rl.Vector2) Player {
-        return Player{ .pos = pos, .direction = rl.Vector2.init(0.0, 0.0), .speed = 400.0, .radius = 20.0 };
+        const texture = gameData.Assets.PlayerTexture;
+        return Player{
+            .pos = pos,
+            .direction = rl.Vector2.init(0.0, 0.0),
+            .speed = 400.0,
+            .radius = 20.0,
+            .texture = texture,
+        };
     }
 
     pub fn update(self: *Player, dt: f32) void {
@@ -64,12 +95,15 @@ const Player = struct {
     }
 
     pub fn draw(self: *Player) void {
-        rl.drawCircleV(self.pos, self.radius, rl.Color.black);
+        // rl.drawCircleV(self.pos, self.radius, rl.Color.black);
+        rl.drawTextureV(self.texture, self.pos, rl.Color.white);
     }
 
     pub fn input(self: Player) void {
         if (rl.isMouseButtonPressed(rl.MouseButton.left)) {
-            const initPosition = self.pos;
+            const offset = 50;
+            var initPosition = self.pos;
+            initPosition.x += offset;
             game.add_projectile(initPosition);
         }
     }
@@ -84,8 +118,10 @@ const LaserProjectile = struct {
     size: rl.Vector2,
     timer: f32,
     proj_lifetime: f32,
+    texture: rl.Texture,
 
     pub fn init(pos: rl.Vector2, width: f32, height: f32) LaserProjectile {
+        const texture = gameData.Assets.LaserTexture;
         const laserProj = LaserProjectile{
             .pos = pos,
             .direction = rl.Vector2.init(0.0, -1.0),
@@ -95,6 +131,7 @@ const LaserProjectile = struct {
             .active = true,
             .timer = 0.0,
             .proj_lifetime = 60.0,
+            .texture = texture,
         };
         return laserProj;
     }
@@ -111,7 +148,8 @@ const LaserProjectile = struct {
     }
 
     pub fn draw(self: LaserProjectile) void {
-        rl.drawRectangleV(self.pos, self.size, rl.Color.red);
+        // rl.drawRectangleV(self.pos, self.size, rl.Color.red);
+        rl.drawTextureV(self.texture, self.pos, rl.Color.white);
     }
 };
 
@@ -123,27 +161,30 @@ const Rock = struct {
     size: rl.Vector2,
     active: bool,
     rotation: f32,
+    texture: rl.Texture,
 
     pub fn init(pos: rl.Vector2, width: f32, height: f32, rand: std.Random) Rock {
         const x_dir = rand.intRangeLessThan(i16, -1, 1);
+        const texture = gameData.Assets.RockTexture;
         return Rock{
             .pos = pos,
             .direction = rl.Vector2.init(@as(f32, @floatFromInt(x_dir)), 1.0),
-            .speed = 400.0,
-            .areaRectangle = rl.Rectangle.init(pos.x, pos.y, width, height),
+            .speed = 250.0,
+            .areaRectangle = rl.Rectangle.init(pos.x, pos.y, @as(f32, @floatFromInt(texture.width)), @as(f32, @floatFromInt(texture.height))),
             .size = rl.Vector2.init(width, height),
             .active = true,
             .rotation = 0.0,
+            .texture = texture,
         };
     }
     pub fn update(self: *Rock, dt: f32) void {
-        self.pos.x = self.direction.x * self.speed * dt;
-        self.pos.y = self.direction.y * self.speed * dt;
+        self.pos.x += self.direction.x * self.speed * dt;
+        self.pos.y += self.direction.y * self.speed * dt;
         self.areaRectangle.x = self.pos.x;
         self.areaRectangle.y = self.pos.y;
     }
     pub fn draw(self: Rock) void {
-        rl.drawRectangleV(self.pos, self.size, rl.Color.blue);
+        rl.drawTextureV(self.texture, self.pos, rl.Color.white);
     }
 };
 
@@ -153,24 +194,20 @@ pub fn main() anyerror!void {
         try std.posix.getrandom(std.mem.asBytes(&seed));
         break :blk seed;
     });
-    const rand = prng.random();
-    // for (0..10) |_| {
-    //     std.debug.print("{c}\n", .{@mod(rnd.random().int(u8), 26) + 'a'});
-    // }
+    const rand: std.Random = prng.random();
     const title = "gg";
     another.init2();
 
-    // rl.setConfigFlags(@enumFromInt(@intFromEnum(rl.ConfigFlags.flag_vsync_hint)));
     rl.initWindow(screenWidth, screenHeight, title);
     rl.setExitKey(rl.KeyboardKey.escape);
-
+    game = Game.init();
+    gameData = try GameData.init();
     rl.setTargetFPS(60);
 
     const rockSpawnTime = 1.0;
     var rockSpawnTimer: f32 = 0.0;
 
     var player = Player.init(rl.Vector2.init(300.0, 300.0));
-
     while (!rl.windowShouldClose()) {
         const dt = rl.getFrameTime();
         rockSpawnTimer += dt;
@@ -178,22 +215,37 @@ pub fn main() anyerror!void {
             game.spawn_rock(rand);
             rockSpawnTimer = 0.0;
         }
+
         for (&game.projectiles) |*projectile| {
             if (projectile.active) {
                 projectile.update(dt);
+                for (&game.rocks) |*rock| {
+                    if (rock.active) {
+                        if (rl.checkCollisionRecs(projectile.areaRectangle, rock.areaRectangle)) {
+                            rock.active = false;
+                            projectile.active = false;
+                            gameData.score += 1;
+                        }
+                    }
+                }
             }
         }
+
         for (&game.rocks) |*rock| {
             if (rock.active) {
                 rock.update(dt);
             }
         }
+
         player.update(dt);
         player.input();
+        var buf: [1024]u8 = undefined;
+        const scoreStr = try std.fmt.bufPrintZ(&buf, "{}", .{gameData.score});
 
         rl.beginDrawing();
         rl.clearBackground(rl.Color.ray_white);
         rl.drawText(title, 190, 200, 20, rl.Color.light_gray);
+        rl.drawText(scoreStr, 400, 200, 20, rl.Color.light_gray);
         for (game.projectiles) |projectile| {
             if (projectile.active) {
                 projectile.draw();
